@@ -1,0 +1,78 @@
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+#include <ESP8266WiFi.h>
+#include "FirebaseESP8266.h"
+
+DHT_Unified dht(D7, DHT11);
+
+#define US_ECHO D5
+#define US_TRIG D6
+#define LED_PIN 2
+#define BUTTON_PIN D0
+
+int duration;
+FirebaseData firebaseData;
+
+/* WiFi credentials */
+#define ssid "Tec-IoT"
+#define password "spotless.magnetic.bridge"
+
+/* Firebase credentials */
+#define API_KEY "IZ9w1kmKmdHN3XbsXfSd8NZJJKQBlB2HtpcZvrmM"
+#define FIREBASE_HOST "coffeebase-3d646-default-rtdb.firebaseio.com"
+#define FIREBASE_AUTH "coffeebase-3d646.firebaseapp.com"
+
+void setup() {
+  dht.begin();
+  Serial.begin(9600);
+  pinMode(US_ECHO, INPUT);
+  pinMode(US_TRIG, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(250);
+  }
+
+  Serial.println("\nConnected to Wi-Fi");
+
+  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH, API_KEY);
+  Firebase.reconnectWiFi(true);
+}
+
+void loop() {
+  sensors_event_t ev;
+  dht.temperature().getEvent(&ev);
+  dht.humidity().getEvent(&ev);
+
+  digitalWrite(US_TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(US_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(US_TRIG, LOW);
+  duration = pulseIn(US_ECHO, HIGH);
+
+  Serial.print("Temp: "); Serial.println(ev.temperature);
+  Serial.print("Humidity: "); Serial.println(ev.relative_humidity);
+  Serial.print("Distance: "); Serial.println(duration);
+  Serial.print("Button: "); Serial.println(digitalRead(BUTTON_PIN));
+
+  // Update Firebase with sensor data
+  Firebase.setFloat(firebaseData, "/Temperature", ev.temperature);
+  Firebase.setFloat(firebaseData, "/Humidity", ev.relative_humidity);
+  Firebase.setInt(firebaseData, "/Distance", duration);
+  Firebase.setInt(firebaseData, "/ButtonState", digitalRead(BUTTON_PIN));
+
+  if (firebaseData.httpCode() == HTTP_CODE_OK) {
+    Serial.println("Firebase update successful");
+  } else {
+    Serial.println("Firebase update failed");
+    Serial.println(firebaseData.errorReason());
+  }
+
+  delay(1000);
+}
